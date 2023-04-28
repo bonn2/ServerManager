@@ -1,8 +1,13 @@
 import os.path
 import subprocess
+import requests
 from tkinter import *
 from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText
+
+# Static Variables
+paper_versions: list = []
+paper_builds: dict = {}
 
 
 # Static Methods
@@ -20,24 +25,55 @@ def getProjectVersions(project):
         return []
 
 
+def getPaperVersions():
+    global paper_versions
+    if not paper_versions == []:
+        return paper_versions
+    r = requests.get("https://api.papermc.io/v2/projects/paper")
+    if not r.status_code == 200:
+        messagebox.showerror("Failed to get versions!", str(r.status_code) + ": " + r.reason)
+        return []
+    paper_versions = list(r.json()["versions"])
+    paper_versions.reverse()
+    return paper_versions
+
+
+def getPaperBuilds(version: str):
+    global paper_builds
+    if version in paper_builds.keys():
+        return paper_builds[version]
+    r = requests.get("https://api.papermc.io/v2/projects/paper/versions/" + version)
+    if not r.status_code == 200:
+        messagebox.showerror("Failed to get builds!", str(r.status_code) + ": " + r.reason)
+        return []
+    builds = list(r.json()["builds"])
+    builds.reverse()
+    paper_builds[version] = builds
+    return builds
+
+
 class Main:
+    # noinspection PyTypeChecker
     def __init__(self):
         # Persistent variables
-        self.new_project_entry = None
-        self.console_entry = None
-        self.kill_server = None
-        self.stop_server = None
-        self.console_output = None
-        self.start_server = None
-        self.right_frame = None
-        self.left_frame = None
-        self.banner_menu = None
-        self.frame = None
+        self.build_dropdown: OptionMenu = None
+        self.version_dropdown: OptionMenu = None
+        self.platform_dropdown: OptionMenu = None
+        self.new_project_entry: Entry = None
+        self.console_entry: Entry = None
+        self.kill_server: Button = None
+        self.stop_server: Button = None
+        self.console_output: ScrolledText = None
+        self.start_server: Entry = None
+        self.right_frame: Frame = None
+        self.left_frame: Frame = None
+        self.banner_menu: Menu = None
+        self.frame: Frame = None
         self.server_process = None
-        self.log_content = ''
-        self.previous_log_content = ''
-        self.page = ''
-        self.project = ''
+        self.log_content: str = ''
+        self.previous_log_content: str = ''
+        self.page: str = ''
+        self.project: str = ''
 
         # Read latest log into previous log content
         if os.path.exists('testserver/logs/latest.log'):
@@ -63,6 +99,9 @@ class Main:
     def openSelectProjectPage(self):
         self.clearPage()
         self.page = "select"
+        if len(getProjects()) == 0:
+            self.openNewProjectPage()
+            return
         for project in getProjects():
             button = Button(self.root, text=project, command=lambda: self.selectProject(project))
             button.pack()
@@ -78,6 +117,30 @@ class Main:
         self.new_project_entry.bind("<Return>", self.createProject)
         self.new_project_entry.pack()
 
+    def openSelectVersionPage(self):
+        self.clearPage()
+        self.page = "version"
+        if self.project == '':
+            self.openSelectProjectPage()
+            return
+        # Left and right division
+        self.left_frame = Frame(self.root)
+        self.left_frame.pack(side=LEFT)
+        self.right_frame = Frame(self.root)
+        self.right_frame.pack(side=RIGHT)
+
+        version_label = Label(self.left_frame, text="Choose a version")
+        version_label.pack(side=TOP)
+        new_label = Label(self.right_frame, text="Create a version")
+        new_label.grid(row=0, column=0)
+        self.platform_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "Paper", "Purpur", "Folia",
+                                            command=self.selectPlatform)
+        self.platform_dropdown.grid(row=1, column=0)
+        self.version_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "")
+        self.version_dropdown.grid(row=2, column=0)
+        self.build_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "")
+        self.version_dropdown.grid(row=3, column=0)
+
     def openProjectPage(self):
         self.clearPage()
         self.page = "project"
@@ -89,8 +152,8 @@ class Main:
 
         # Banner menu
         self.banner_menu = Menu(self.frame)
-        self.banner_menu.add_command(label="Change Project", command=self.changeProject)
-        self.banner_menu.add_command(label="Change Version", command=self.changeVersion)
+        self.banner_menu.add_command(label="Change Project", command=self.openSelectProjectPage)
+        self.banner_menu.add_command(label="Change Version", command=self.openSelectVersionPage)
         self.root.config(menu=self.banner_menu)
 
         # Left and right division
@@ -126,6 +189,24 @@ class Main:
         self.project = project
         self.openProjectPage()
 
+    def selectPlatform(self, selection):
+        if selection == "Paper":
+            self.version_dropdown.destroy()
+            default = StringVar(self.right_frame)
+            if not getPaperVersions() == []:
+                default.set(getPaperVersions()[0])
+            self.version_dropdown = OptionMenu(self.right_frame, default, *getPaperVersions(),
+                                               command=self.selectVersion)
+            self.version_dropdown.grid(row=2, column=0)
+
+    def selectVersion(self, selection):
+        self.build_dropdown.destroy()
+        default = StringVar(self.right_frame)
+        if not getPaperBuilds(selection) == []:
+            default.set(getPaperBuilds(selection)[0])
+        self.build_dropdown = OptionMenu(self.right_frame, default, *getPaperBuilds(selection))
+        self.build_dropdown.grid(row=3, column=0)
+
     # Window functions
     def onClosing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
@@ -157,12 +238,6 @@ class Main:
                 self.server_process.stdin.write(bytes(command + '\r\n', 'ascii'))
                 self.server_process.stdin.flush()
                 self.console_entry.delete(0, 'end')
-
-    def changeProject(self):
-        pass
-
-    def changeVersion(self):
-        pass
 
     # GUI loop
     def customLoop(self):
