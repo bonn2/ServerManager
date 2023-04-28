@@ -5,12 +5,39 @@ from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText
 
 
+# Static Methods
+def getProjects():
+    if os.path.exists("Test Servers"):
+        return os.listdir("Test Servers")
+    else:
+        return []
+
+
+def getProjectVersions(project):
+    if os.path.exists("Test Servers/" + project):
+        return os.listdir("Test Servers/" + project)
+    else:
+        return []
+
+
 class Main:
     def __init__(self):
         # Persistent variables
+        self.new_project_entry = None
+        self.console_entry = None
+        self.kill_server = None
+        self.stop_server = None
+        self.console_output = None
+        self.start_server = None
+        self.right_frame = None
+        self.left_frame = None
+        self.banner_menu = None
+        self.frame = None
         self.server_process = None
         self.log_content = ''
         self.previous_log_content = ''
+        self.page = ''
+        self.project = ''
 
         # Read latest log into previous log content
         if os.path.exists('testserver/logs/latest.log'):
@@ -20,13 +47,50 @@ class Main:
         # Create root frame / widget
         self.root = Tk()
         self.root.geometry("800x400")
+
+        # Setup root window
+        self.root.title("Test")
+        self.root.protocol("WM_DELETE_WINDOW", self.onClosing)
+
+        # Open page
+        self.openSelectProjectPage()
+
+    # Pages
+    def clearPage(self):
+        for widget in self.root.winfo_children():
+            widget.destroy()
+
+    def openSelectProjectPage(self):
+        self.clearPage()
+        self.page = "select"
+        for project in getProjects():
+            button = Button(self.root, text=project, command=lambda: self.selectProject(project))
+            button.pack()
+        button = Button(self.root, text="Create New Project", command=self.openProjectPage)
+        button.pack()
+
+    def openNewProjectPage(self):
+        self.clearPage()
+        self.page = "new"
+        label = Label(self.root, text="Enter a project name")
+        label.pack(padx=5, pady=5)
+        self.new_project_entry = Entry(self.root)
+        self.new_project_entry.bind("<Return>", self.createProject)
+        self.new_project_entry.pack()
+
+    def openProjectPage(self):
+        self.clearPage()
+        self.page = "project"
+        if self.project == '':
+            self.openNewProjectPage()
+            return
         self.frame = Frame(self.root)
         self.frame.pack()
 
         # Banner menu
         self.banner_menu = Menu(self.frame)
-        self.banner_menu.add_command(label="Project", command=self.changeProject)
-        self.banner_menu.add_command(label="Version", command=self.changeVersion)
+        self.banner_menu.add_command(label="Change Project", command=self.changeProject)
+        self.banner_menu.add_command(label="Change Version", command=self.changeVersion)
         self.root.config(menu=self.banner_menu)
 
         # Left and right division
@@ -51,12 +115,19 @@ class Main:
         self.console_entry.bind("<Return>", self.sendCommand)
         self.console_entry.grid(row=1, column=0, padx=3, pady=3)
 
-        # Setup root window
-        self.root.title("Test")
-        self.root.protocol("WM_DELETE_WINDOW", self.on_closing)
+    # Project Creation
+    def createProject(self, event):
+        self.project = self.new_project_entry.get()
+        if not os.path.exists("Test Servers/" + self.project):
+            os.makedirs("Test Servers/" + self.project, exist_ok=True)
+        self.openProjectPage()
+
+    def selectProject(self, project):
+        self.project = project
+        self.openProjectPage()
 
     # Window functions
-    def on_closing(self):
+    def onClosing(self):
         if messagebox.askokcancel("Quit", "Do you want to quit?"):
             self.killServer()
             self.root.destroy()
@@ -101,25 +172,26 @@ class Main:
         #     self.server_process.stdin.write(bytes(command + '\r\n', 'ascii'))
         #     self.server_process.stdin.flush()
 
-        # Check if fully scrolled down before writing to console
-        fully_scrolled_down = self.console_output.yview()[1] == 1.0
+        if self.page == "project":
+            # Check if fully scrolled down before writing to console
+            fully_scrolled_down = self.console_output.yview()[1] == 1.0
 
-        # Update console
-        if os.path.exists('testserver/logs/latest.log'):
-            f = open('testserver/logs/latest.log')
-            original_log = f.read()
-            self.log_content = original_log
-            self.log_content = self.log_content.replace(self.previous_log_content, '')
-            if self.log_content != '':
-                self.console_output.config(state=NORMAL)
-                self.console_output.insert(INSERT, self.log_content)
-                self.console_output.config(state=DISABLED)
-            self.previous_log_content = original_log
-            f.close()
+            # Update console
+            if os.path.exists('testserver/logs/latest.log'):
+                f = open('testserver/logs/latest.log')
+                original_log = f.read()
+                self.log_content = original_log
+                self.log_content = self.log_content.replace(self.previous_log_content, '')
+                if self.log_content != '':
+                    self.console_output.config(state=NORMAL)
+                    self.console_output.insert(INSERT, self.log_content)
+                    self.console_output.config(state=DISABLED)
+                self.previous_log_content = original_log
+                f.close()
 
-        # Scroll console if it was already scrolled all the way down
-        if fully_scrolled_down:
-            self.console_output.see("end")
+            # Scroll console if it was already scrolled all the way down
+            if fully_scrolled_down:
+                self.console_output.see("end")
 
         # Recall loop
         self.root.after(100, self.customLoop)
