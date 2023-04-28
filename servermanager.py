@@ -11,21 +11,21 @@ paper_builds: dict = {}
 
 
 # Static Methods
-def getProjects():
+def getProjects() -> list:
     if os.path.exists("Test Servers"):
         return os.listdir("Test Servers")
     else:
         return []
 
 
-def getProjectVersions(project):
+def getProjectVersions(project) -> list:
     if os.path.exists("Test Servers/" + project):
         return os.listdir("Test Servers/" + project)
     else:
         return []
 
 
-def getPaperVersions():
+def getPaperVersions() -> list:
     global paper_versions
     if not paper_versions == []:
         return paper_versions
@@ -38,7 +38,7 @@ def getPaperVersions():
     return paper_versions
 
 
-def getPaperBuilds(version: str):
+def getPaperBuilds(version: str) -> list:
     global paper_builds
     if version in paper_builds.keys():
         return paper_builds[version]
