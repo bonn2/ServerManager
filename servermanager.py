@@ -266,9 +266,8 @@ class Main:
         self.root.after(100, self.customLoop)
 
 
-main = Main()
-
-# Start custom gui loop
-main.customLoop()
-
-main.root.mainloop()
+if __name__ == "__main__":
+    main = Main()
+    # Start custom gui loop
+    main.customLoop()
+    main.root.mainloop()
