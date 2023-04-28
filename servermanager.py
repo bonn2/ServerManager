@@ -241,12 +241,6 @@ class Main:
 
     # GUI loop
     def customLoop(self):
-        # Handle console input
-        # command = input('')
-        # if command:
-        #     self.server_process.stdin.write(bytes(command + '\r\n', 'ascii'))
-        #     self.server_process.stdin.flush()
-
         if self.page == "project":
             # Check if fully scrolled down before writing to console
             fully_scrolled_down = self.console_output.yview()[1] == 1.0
