@@ -49,7 +49,6 @@ def get_paper_builds(version: str) -> list:
         messagebox.showerror("Failed to get builds!", str(r.status_code) + ": " + r.reason)
         return []
     builds = list(r.json()["builds"])
-    builds.reverse()
     paper_builds[version] = builds
     return builds
 
@@ -69,7 +68,7 @@ class Main:
         # Persistent variables
         self.reader_thread: Thread = None
         self.console_buffer: list = []
-        self.build_dropdown: OptionMenu = None
+        self.build_dropdown: Spinbox = None
         self.version_dropdown: OptionMenu = None
         self.platform_dropdown: OptionMenu = None
         self.new_project_entry: Entry = None
@@ -146,13 +145,12 @@ class Main:
         self.platform_dropdown.grid(row=1, column=0)
         self.version_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "")
         self.version_dropdown.grid(row=2, column=0)
-        self.build_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "")
-        self.version_dropdown.grid(row=3, column=0)
+        self.build_dropdown = Spinbox(self.right_frame, from_=0, to=0)
+        self.build_dropdown.grid(row=3, column=0)
 
     def open_project_page(self):
         self.clear_page()
         self.page = "project"
-        self.logging = False
         if self.project == '':
             self.open_new_project_page()
             return
@@ -212,13 +210,29 @@ class Main:
             self.version_dropdown = OptionMenu(self.right_frame, default, *get_paper_versions(),
                                                command=self.select_version)
             self.version_dropdown.grid(row=2, column=0)
+            # Get build info for default selection
+            self.select_version(get_paper_versions()[0])
 
     def select_version(self, selection):
         self.build_dropdown.destroy()
-        default = StringVar(self.right_frame)
-        if not get_paper_builds(selection) == []:
-            default.set(get_paper_builds(selection)[0])
-        self.build_dropdown = OptionMenu(self.right_frame, default, *get_paper_builds(selection))
+        builds = get_paper_builds(selection)
+        default_build = IntVar()
+        default_build.set(builds[len(builds) - 1])
+        self.build_dropdown = Spinbox(self.right_frame, values=builds, from_=builds[0], to=builds[len(builds) - 1])
+        self.build_dropdown.config(textvariable=default_build)
+
+        def on_deselect():
+            self.root.focus()
+            if int(self.build_dropdown.get()) > builds[len(builds) - 1]:
+                latest_build = IntVar()
+                latest_build.set(builds[len(builds) - 1])
+                self.build_dropdown.config(textvariable=latest_build)
+            elif int(self.build_dropdown.get()) < builds[0]:
+                oldest_build = IntVar()
+                oldest_build.set(builds[0])
+                self.build_dropdown.config(textvariable=oldest_build)
+
+        self.build_dropdown.bind("<Return>", lambda x: on_deselect())
         self.build_dropdown.grid(row=3, column=0)
 
     # Window functions
