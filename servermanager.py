@@ -1,5 +1,6 @@
 import os.path
 import subprocess
+import shutil
 from threading import Thread
 
 import requests
@@ -16,6 +17,13 @@ paper_builds: dict = {}
 def get_projects() -> list:
     if os.path.exists("TestServers"):
         return os.listdir("TestServers")
+    else:
+        return []
+
+
+def get_versions(project: str) -> list:
+    if os.path.exists(f"TestServers/{project}"):
+        return os.listdir(f"TestServers/{project}")
     else:
         return []
 
@@ -53,6 +61,20 @@ def get_paper_builds(version: str) -> list:
     return builds
 
 
+def get_jar(platform: str, version: str, build: str):
+    # Make sure cache folder exists
+    os.makedirs("cache", exist_ok=True)
+    if not os.path.exists(f"cache/{platform}-{version}-{build}.jar"):
+        r = requests.get(
+            f"https://api.papermc.io/v2/projects/paper/versions/1.19.4/builds/521/downloads/{platform}-{version}-{build}.jar")
+        if not r.status_code == 200:
+            messagebox.showerror("Download Failed!", f"{r.status_code}: {r.reason}"
+                                                     f"\nFailed to download {platform}-{version}-{build}.jar")
+            return None
+        open(f"cache/{platform}-{version}-{build}.jar", 'wb').write(r.content)
+    return f"cache/{platform}-{version}-{build}.jar"
+
+
 def console_reader(f, buffer):
     while True:
         line = f.readline()
@@ -66,6 +88,7 @@ class Main:
     # noinspection PyTypeChecker
     def __init__(self):
         # Persistent variables
+        self.create_version_button: Button = None
         self.reader_thread: Thread = None
         self.console_buffer: list = []
         self.build_dropdown: Spinbox = None
@@ -82,6 +105,9 @@ class Main:
         self.banner_menu: Menu = None
         self.frame: Frame = None
         self.server_process = None
+        self.platform: str = ''
+        self.version: str = ''
+        self.build: str = ''
         self.log_content: str = ''
         self.previous_log_content: str = ''
         self.page: str = ''
@@ -138,10 +164,11 @@ class Main:
 
         version_label = Label(self.left_frame, text="Choose a version")
         version_label.pack(side=TOP)
+        # Todo list created versions here
         new_label = Label(self.right_frame, text="Create a version")
         new_label.grid(row=0, column=0)
         self.platform_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "Paper", "Purpur", "Folia",
-                                            command=self.select_platform)
+                                            command=self.on_select_platform)
         self.platform_dropdown.grid(row=1, column=0)
         self.version_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "")
         self.version_dropdown.grid(row=2, column=0)
@@ -153,6 +180,9 @@ class Main:
         self.page = "project"
         if self.project == '':
             self.open_new_project_page()
+            return
+        if self.version == '':
+            self.open_select_version_page()
             return
         self.frame = Frame(self.root)
         self.frame.pack()
@@ -201,25 +231,29 @@ class Main:
         self.project = project
         self.open_project_page()
 
-    def select_platform(self, selection):
-        if selection == "Paper":
+    def on_select_platform(self, platform: str):
+        self.platform = platform.lower()
+        if self.platform == "paper":
             self.version_dropdown.destroy()
             default = StringVar(self.right_frame)
             if not get_paper_versions() == []:
                 default.set(get_paper_versions()[0])
             self.version_dropdown = OptionMenu(self.right_frame, default, *get_paper_versions(),
-                                               command=self.select_version)
+                                               command=self.on_select_version)
             self.version_dropdown.grid(row=2, column=0)
             # Get build info for default selection
-            self.select_version(get_paper_versions()[0])
+            self.on_select_version(get_paper_versions()[0])
 
-    def select_version(self, selection):
+    def on_select_version(self, version):
+        self.version = version
         self.build_dropdown.destroy()
-        builds = get_paper_builds(selection)
+        builds = get_paper_builds(version)
         default_build = IntVar()
         default_build.set(builds[len(builds) - 1])
-        self.build_dropdown = Spinbox(self.right_frame, values=builds, from_=builds[0], to=builds[len(builds) - 1])
+        self.build_dropdown = Spinbox(self.right_frame, values=builds, from_=builds[0], to=builds[len(builds) - 1],
+                                      command=self.on_select_build)
         self.build_dropdown.config(textvariable=default_build)
+        self.build = builds[len(builds) - 1]
 
         def on_deselect():
             self.root.focus()
@@ -234,6 +268,21 @@ class Main:
 
         self.build_dropdown.bind("<Return>", lambda x: on_deselect())
         self.build_dropdown.grid(row=3, column=0)
+        self.create_version_button = Button(self.right_frame, text="Create Version", command=self.create_version)
+        self.create_version_button.grid(row=4, column=0)
+
+    def on_select_build(self, build):
+        self.build = build
+
+    def create_version(self):
+        if self.project == '':
+            return
+        os.makedirs(f"TestServers/{self.project}/{self.version}-{self.platform}", exist_ok=True)
+        shutil.copy(
+            get_jar(self.platform, self.version, self.build),
+            f"TestServers/{self.project}/{self.version}-{self.platform}/{self.platform}-{self.version}-{self.build}.jar"
+        )
+        self.open_project_page()
 
     # Window functions
     def on_closing(self):
