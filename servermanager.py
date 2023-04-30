@@ -215,11 +215,6 @@ class Main:
         self.console_entry.bind("<Return>", self.send_command)
         self.console_entry.grid(row=1, column=0, padx=3, pady=3)
 
-        # Read latest log into previous log content
-        if os.path.exists('TestServers/' + self.project + '/logs/latest.log'):
-            f = open('TestServers/' + self.project + '/logs/latest.log')
-            self.previous_log_content = f.read()
-
     # Project Creation
     def create_project(self, event):
         self.project = self.new_project_entry.get()
@@ -292,9 +287,17 @@ class Main:
 
     # Widget functions
     def start_server(self):
+        # Clear displayed log
+        self.console_output.config(state=NORMAL)
+        self.console_output.delete("1.0", END)
+        self.console_output.config(state=DISABLED)
         # Start server process
-        self.server_process = subprocess.Popen('java -jar paper.jar --nogui', cwd="TestServers/" + self.project,
-                                               stdin=subprocess.PIPE, stdout=subprocess.PIPE)
+        self.server_process = subprocess.Popen(
+            f'java -jar {self.platform}-{self.version}-{self.build}.jar --nogui',
+            cwd=f"TestServers/{self.project}/{self.version}-{self.platform}",
+            stdin=subprocess.PIPE,
+            stdout=subprocess.PIPE
+        )
         self.reader_thread = Thread(target=console_reader, args=(self.server_process.stdout, self.console_buffer))
         self.reader_thread.daemon = True
         self.reader_thread.start()
