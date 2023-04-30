@@ -1,9 +1,10 @@
 import os.path
 import subprocess
 import shutil
+import re
+import requests
 from threading import Thread
 
-import requests
 from tkinter import *
 from tkinter import messagebox
 from tkinter.scrolledtext import ScrolledText
@@ -28,11 +29,19 @@ def get_versions(project: str) -> list:
         return []
 
 
-def get_project_versions(project) -> list:
+def get_project_versions(project: str) -> list:
     if os.path.exists("TestServers/" + project):
         return os.listdir("TestServers/" + project)
     else:
         return []
+
+
+def get_jar_path(project: str, platform: str, version: str) -> str:
+    if os.path.exists(f"TestServers/{project}/{version}-{platform}"):
+        for filename in os.listdir(f"TestServers/{project}/{version}-{platform}"):
+            if re.search(f"{platform}-{version}-[0-9]+\\.jar", filename):
+                return filename
+    return ""
 
 
 def get_paper_versions() -> list:
@@ -164,7 +173,9 @@ class Main:
 
         version_label = Label(self.left_frame, text="Choose a version")
         version_label.pack(side=TOP)
-        # Todo list created versions here
+        for version in get_versions(self.project):
+            button = Button(self.left_frame, text=version, command=lambda: self.select_version(version))
+            button.pack()
         new_label = Label(self.right_frame, text="Create a version")
         new_label.grid(row=0, column=0)
         self.platform_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "Paper", "Purpur", "Folia",
@@ -224,6 +235,11 @@ class Main:
 
     def select_project(self, project):
         self.project = project
+        self.open_select_version_page()
+
+    def select_version(self, full_version: str):
+        self.platform = full_version.split('-', 1)[1]
+        self.version = full_version.split('-', 1)[0]
         self.open_project_page()
 
     def on_select_platform(self, platform: str):
@@ -293,7 +309,7 @@ class Main:
         self.console_output.config(state=DISABLED)
         # Start server process
         self.server_process = subprocess.Popen(
-            f'java -jar {self.platform}-{self.version}-{self.build}.jar --nogui',
+            f'java -jar {get_jar_path(self.project, self.platform, self.version)} --nogui',
             cwd=f"TestServers/{self.project}/{self.version}-{self.platform}",
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE
