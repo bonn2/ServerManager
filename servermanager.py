@@ -328,6 +328,7 @@ class Main:
             # Check if fully scrolled down before writing to console
             fully_scrolled_down = self.console_output.yview()[1] == 1.0
 
+            # Write to console
             if self.console_buffer:
                 self.console_output.config(state=NORMAL)
                 self.console_output.insert(END, self.console_buffer.pop(0))
