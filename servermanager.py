@@ -3,10 +3,11 @@ import subprocess
 import shutil
 import re
 import requests
+import json
 from threading import Thread
 
 from tkinter import *
-from tkinter import messagebox
+from tkinter import messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
 
 # Static Variables
@@ -17,14 +18,22 @@ paper_builds: dict = {}
 # Static Methods
 def get_projects() -> list:
     if os.path.exists("TestServers"):
-        return os.listdir("TestServers")
+        projects = []
+        for project in os.listdir(f"TestServers"):
+            if os.path.isdir(f"TestServers/{project}"):
+                projects.append(project)
+        return projects
     else:
         return []
 
 
 def get_versions(project: str) -> list:
     if os.path.exists(f"TestServers/{project}"):
-        return os.listdir(f"TestServers/{project}")
+        versions = []
+        for version in os.listdir(f"TestServers/{project}"):
+            if os.path.isdir(f"TestServers/{project}/{version}"):
+                versions.append(version)
+        return versions
     else:
         return []
 
@@ -84,6 +93,17 @@ def get_jar(platform: str, version: str, build: str):
     return f"cache/{platform}-{version}-{build}.jar"
 
 
+def set_plugin_locations(project: str, locations):
+    jsonDict = {}
+    if os.path.exists(f"TestServers/{project}/meta.json"):
+        with open(f"TestServers/{project}/meta.json", 'r') as f:
+            json_string = f.read()
+            jsonDict = json.loads(json_string)
+    jsonDict['plugin_locations'] = list(locations)
+    with open(f"TestServers/{project}/meta.json", "w") as f:
+        json.dump(jsonDict, f)
+
+
 def console_reader(f, buffer):
     while True:
         line = f.readline()
@@ -97,6 +117,7 @@ class Main:
     # noinspection PyTypeChecker
     def __init__(self):
         # Persistent variables
+        self.select_plugin_button = None
         self.create_version_button: Button = None
         self.reader_thread: Thread = None
         self.console_buffer: list = []
@@ -124,7 +145,7 @@ class Main:
 
         # Create root frame / widget
         self.root = Tk()
-        self.root.geometry("800x400")
+        self.root.geometry("800x500")
 
         # Setup root window
         self.root.title("Test")
@@ -145,9 +166,8 @@ class Main:
             self.open_new_project_page()
             return
         for project in get_projects():
-            button = Button(self.root, text=project, command=lambda: self.select_project(project))
-            button.pack()
-        button = Button(self.root, text="Create New Project", command=self.open_project_page)
+            Button(self.root, text=project, command=lambda proj=str(project): self.select_project(proj)).pack()
+        button = Button(self.root, text="Create New Project", command=self.open_new_project_page)
         button.pack()
 
     def open_new_project_page(self):
@@ -174,8 +194,7 @@ class Main:
         version_label = Label(self.left_frame, text="Choose a version")
         version_label.pack(side=TOP)
         for version in get_versions(self.project):
-            button = Button(self.left_frame, text=version, command=lambda: self.select_version(version))
-            button.pack()
+            Button(self.left_frame, text=version, command=lambda ver=str(version): self.select_version(ver)).pack()
         new_label = Label(self.right_frame, text="Create a version")
         new_label.grid(row=0, column=0)
         self.platform_dropdown = OptionMenu(self.right_frame, StringVar(self.right_frame), "Paper", "Purpur", "Folia",
@@ -210,7 +229,13 @@ class Main:
         self.right_frame = Frame(self.root)
         self.right_frame.pack(side=RIGHT, fill=BOTH)
 
+        def select_plugin_files():
+            files = filedialog.askopenfilenames(parent=self.left_frame, title="Select files")
+            set_plugin_locations(self.project, files)
+
         # Buttons
+        self.select_plugin_button = Button(self.left_frame, text="Select Plugin Files", command=select_plugin_files)
+        self.select_plugin_button.pack(padx=3, pady=3)
         self.start_server_button = Button(self.left_frame, text="Start Server", command=self.start_server)
         self.start_server_button.pack(padx=3, pady=3)
         self.stop_server_button = Button(self.left_frame, text="Stop Server", command=self.stop_server)
@@ -238,6 +263,7 @@ class Main:
         self.open_select_version_page()
 
     def select_version(self, full_version: str):
+        print(full_version)
         self.platform = full_version.split('-', 1)[1]
         self.version = full_version.split('-', 1)[0]
         self.open_project_page()
@@ -293,6 +319,12 @@ class Main:
             get_jar(self.platform, self.version, self.build),
             f"TestServers/{self.project}/{self.version}-{self.platform}/{self.platform}-{self.version}-{self.build}.jar"
         )
+        # Copy EULA
+        if os.path.exists("eula.txt"):
+            shutil.copy(
+                "eula.txt",
+                f"TestServers/{self.project}/{self.version}-{self.platform}/eula.txt"
+            )
         self.open_project_page()
 
     # Window functions
