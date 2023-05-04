@@ -1,14 +1,15 @@
-import os.path
-import subprocess
-import shutil
-import re
-import requests
 import json
+import os.path
+import re
+import shutil
+import subprocess
+import time
 from threading import Thread
-
 from tkinter import *
 from tkinter import messagebox, filedialog
 from tkinter.scrolledtext import ScrolledText
+
+import requests
 
 # Static Variables
 paper_versions: list = []
@@ -79,7 +80,7 @@ def get_paper_builds(version: str) -> list:
     return builds
 
 
-def get_jar(platform: str, version: str, build: str):
+def get_jar(platform: str, version: str, build: str) -> str:
     # Make sure cache folder exists
     os.makedirs("cache", exist_ok=True)
     if not os.path.exists(f"cache/{platform}-{version}-{build}.jar"):
@@ -93,7 +94,7 @@ def get_jar(platform: str, version: str, build: str):
     return f"cache/{platform}-{version}-{build}.jar"
 
 
-def set_plugin_locations(project: str, locations):
+def set_plugin_locations(project: str, locations) -> None:
     jsonDict = {}
     if os.path.exists(f"TestServers/{project}/meta.json"):
         with open(f"TestServers/{project}/meta.json", 'r') as f:
@@ -104,19 +105,23 @@ def set_plugin_locations(project: str, locations):
         json.dump(jsonDict, f)
 
 
-def console_reader(f, buffer):
-    while True:
-        line = f.readline()
-        if line:
-            buffer.append(line)
-        else:
-            break
+def get_plugin_locations(project: str) -> list:
+    if os.path.exists(f"TestServers/{project}/meta.json"):
+        with open(f"TestServers/{project}/meta.json", 'r') as f:
+            json_string = f.read()
+            jsonDict: dict = json.loads(json_string)
+            if 'plugin_locations' in jsonDict.keys():
+                return jsonDict['plugin_locations']
+    return []
 
 
 class Main:
     # noinspection PyTypeChecker
     def __init__(self):
         # Persistent variables
+        self.restart_server_button = None
+        self.should_restart = None
+        self.copy_and_restart_button = None
         self.select_plugin_button = None
         self.create_version_button: Button = None
         self.reader_thread: Thread = None
@@ -134,7 +139,7 @@ class Main:
         self.left_frame: Frame = None
         self.banner_menu: Menu = None
         self.frame: Frame = None
-        self.server_process = None
+        self.server_process: subprocess.Popen = None
         self.platform: str = ''
         self.version: str = ''
         self.build: str = ''
@@ -233,12 +238,27 @@ class Main:
             files = filedialog.askopenfilenames(parent=self.left_frame, title="Select files")
             set_plugin_locations(self.project, files)
 
+        def copy_and_restart():
+            os.makedirs(f"TestServers/{self.project}/{self.version}-{self.platform}/plugins", exist_ok=True)
+            print(f"TestServers/{self.project}/{self.version}-{self.platform}/plugins")
+            for path in get_plugin_locations(self.project):
+                if os.path.exists(path):
+                    shutil.copy(
+                        path,
+                        f"TestServers/{self.project}/{self.version}-{self.platform}/plugins"
+                    )
+            self.stop_server(should_restart=True)
+
         # Buttons
+        self.copy_and_restart_button = Button(self.left_frame, text="Copy Plugin and Restart", command=copy_and_restart)
+        self.copy_and_restart_button.pack(padx=3, pady=3)
         self.select_plugin_button = Button(self.left_frame, text="Select Plugin Files", command=select_plugin_files)
         self.select_plugin_button.pack(padx=3, pady=3)
         self.start_server_button = Button(self.left_frame, text="Start Server", command=self.start_server)
         self.start_server_button.pack(padx=3, pady=3)
-        self.stop_server_button = Button(self.left_frame, text="Stop Server", command=self.stop_server)
+        self.restart_server_button = Button(self.left_frame, text="Restart Server", command=lambda: self.stop_server(True))
+        self.restart_server_button.pack(padx=3, pady=3)
+        self.stop_server_button = Button(self.left_frame, text="Stop Server", command=lambda: self.stop_server(False))
         self.stop_server_button.pack(padx=3, pady=3)
         self.kill_server_button = Button(self.left_frame, text="Kill Server", command=self.kill_server)
         self.kill_server_button.pack(padx=3, pady=3)
@@ -263,7 +283,6 @@ class Main:
         self.open_select_version_page()
 
     def select_version(self, full_version: str):
-        print(full_version)
         self.platform = full_version.split('-', 1)[1]
         self.version = full_version.split('-', 1)[0]
         self.open_project_page()
@@ -335,6 +354,7 @@ class Main:
 
     # Widget functions
     def start_server(self):
+        self.should_restart = False
         # Clear displayed log
         self.console_output.config(state=NORMAL)
         self.console_output.delete("1.0", END)
@@ -346,16 +366,29 @@ class Main:
             stdin=subprocess.PIPE,
             stdout=subprocess.PIPE
         )
+
+        def console_reader(stdout, buffer) -> None:
+            while True:
+                line = stdout.readline()
+                if line:
+                    buffer.append(line)
+                else:
+                    break
+                time.sleep(0.1)
+
+        self.console_buffer = []
         self.reader_thread = Thread(target=console_reader, args=(self.server_process.stdout, self.console_buffer))
         self.reader_thread.daemon = True
         self.reader_thread.start()
 
-    def stop_server(self):
+    def stop_server(self, should_restart: bool):
+        self.should_restart = should_restart
         if self.server_process is not None:
             self.server_process.stdin.write(bytes("stop" + '\r\n', 'ascii'))
-            self.server_process = None
+            self.server_process.stdin.flush()
 
     def kill_server(self):
+        self.should_restart = False
         if self.server_process is not None:
             self.server_process.kill()
             self.server_process = None
@@ -364,7 +397,6 @@ class Main:
         # Only send command and clear entry box if server is running
         if self.server_process is not None:
             command = self.console_entry.get()
-            print("Command " + command)
             if command:
                 self.server_process.stdin.write(bytes(command + '\r\n', 'ascii'))
                 self.server_process.stdin.flush()
@@ -377,17 +409,25 @@ class Main:
             fully_scrolled_down = self.console_output.yview()[1] == 1.0
 
             # Write to console
-            if self.console_buffer:
+            count = 0
+            while self.console_buffer and count < 25:
+                count += 1
                 self.console_output.config(state=NORMAL)
                 self.console_output.insert(END, self.console_buffer.pop(0))
                 self.console_output.config(state=DISABLED)
 
             # Scroll console if it was already scrolled all the way down
             if fully_scrolled_down:
-                self.console_output.see("end")
+                self.console_output.see(END)
+
+            # Check if server is still running and if it should restart
+            if self.server_process and self.server_process.poll() is not None and self.should_restart:
+                self.should_restart = False
+                self.server_process = None
+                self.start_server()
 
         # Recall loop
-        self.root.after(100, self.customLoop)
+        self.root.after(10, self.customLoop)
 
 
 if __name__ == "__main__":
